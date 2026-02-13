@@ -172,3 +172,5 @@ Built on top of Valve’s default bots + contributions from many talented author
 * BOT Experiment (Furiospuppy)
 * ExtremePush ([insraq](https://github.com/insraq/dota2bots))
 * And all other contributors who made bot games better.
+#   D o t a 2 A I  
+ 
