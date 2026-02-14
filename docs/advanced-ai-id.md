@@ -124,3 +124,52 @@ Untuk profile `fretbots_10k`, perintah gerak bot sekarang dibuat lebih efisien:
 
 Efeknya: respons gerak terasa lebih rapih/stabil saat teamfight, rotasi, dan kiting, terutama untuk preset 10k.
 
+
+
+## 8) Perbaikan Koordinasi Gameplay (Chain Control, Roam, Laning)
+
+Penyesuaian terbaru yang sudah ditambahkan:
+- **Roam/Gank scoring lebih cerdas** di `mode_roam_generic.lua`:
+  - mempertimbangkan estimasi kontrol tim (stun/root/fear/silence/hex) di lane target,
+  - mempertimbangkan dukungan healing tim (hero-hero support healer),
+  - memberi bonus keputusan roam saat power spike mid/support sudah siap.
+- **Kontes rune untuk mid laner/suport** di `mode_rune_generic.lua`:
+  - mid level 6+ dan resource cukup akan lebih prioritas contest power rune,
+  - support pos4/5 bisa bantu secure power rune untuk mid jika kondisi cocok.
+- **Laning equilibrium control** di `mode_laning_generic.lua`:
+  - bot mencoba aggro control (tarik creep wave) via hero aggro timing,
+  - bot mencoba hold posisi lane agar equilibrium tetap aman.
+
+Catatan: ini adalah peningkatan bertahap menuju gameplay yang lebih “panas” dan terkoordinasi,
+namun tetap mempertahankan stabilitas logic existing dari project utama.
+
+
+## 9) Mapping Difficulty -> Bracket Skill (Auto)
+
+Agar perbedaan rank rendah vs high-immortal lebih konsisten, pemetaan default sekarang:
+- Difficulty `0-2`  -> `legend`
+- Difficulty `3-7`  -> `bot_immortal_6k`
+- Difficulty `8-10` -> `fretbots_10k`
+
+Jika `Customize.AdvancedAI.Skill_Bracket` diisi manual, nilai manual tetap dipakai.
+Jika dikosongkan, sistem akan mengikuti mapping difficulty di atas.
+
+## 10) Pattern Farming Maksimal + Objective Utility (Outpost/Watcher/Lotus/Twin Gate)
+
+Update terbaru pada mode farm (`mode_farm_generic.lua`) menambahkan perilaku utility saat bot sedang rotasi farming:
+- bot akan opportunistic **pickup Lotus** (Lotus / Greater Lotus) jika aman,
+- bot dapat **capture Watcher / Outpost** yang dekat saat tidak ada ancaman musuh di area,
+- core bisa sesekali **pathing ke Lotus Pool** pada timing spawn agar resource lane/map lebih efisien,
+- bot dapat mempertimbangkan **Twin Gate** untuk mempercepat rotasi ke target farm yang sangat jauh.
+
+Khusus profil tinggi (`fretbots_10k`), radius keputusan objective dibuat sedikit lebih agresif namun tetap dibatasi safety check musuh terdekat.
+
+## 11) Wisdom Shrine Tiap 7 Menit (Dipaksa Lebih Konsisten)
+
+Mode rune sekarang diperketat untuk Wisdom Shrine:
+- bot mulai **pre-position** sebelum spawn (jendela persiapan), bukan hanya bereaksi setelah spawn,
+- prioritas pengambil Wisdom lebih condong ke **support (pos4/5)** dan hero level lebih rendah,
+- di jendela Wisdom aktif, desire dinaikkan agar eksekusi lebih konsisten,
+- tracking cycle 7-menit diperbaiki supaya tidak gampang miss pada transisi menit.
+
+Tujuannya: tim bot lebih konsisten mengambil Wisdom setiap siklus 7 menit selama kondisi map masih aman.

@@ -49,6 +49,15 @@ local runTime = 0;
 local shouldRunTime = 0
 local runMode = false;
 
+local hCapture = bot:GetAbilityByName('ability_capture')
+local TwinGates = {}
+local Watchers = {}
+local Outposts = {}
+local objectiveRefreshTime = -90
+
+local radiantLotusPool = Vector(-1848, -4388, 256)
+local direLotusPool = Vector(1598, 4183, 256)
+
 
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
@@ -426,6 +435,175 @@ function OnEnd()
 	-- bot:SetTarget(nil);
 end
 
+local function IsHighImmortal10kProfile()
+    local configured = nil
+    if Customize and Customize.AdvancedAI then
+        configured = Customize.AdvancedAI.Skill_Bracket
+    end
+
+    if type(configured) == 'string' then
+        local key = string.lower(configured)
+        return key == 'fretbots_10k' or key == '10k' or key == 'high_immortal'
+    end
+
+    if Customize and Customize.Fretbots and Customize.Fretbots.Default_Difficulty ~= nil then
+        return Customize.Fretbots.Default_Difficulty >= 9
+    end
+
+    return false
+end
+
+local function RefreshObjectiveEntities()
+    if DotaTime() - objectiveRefreshTime < 10 then return end
+
+    TwinGates = {}
+    Watchers = {}
+    Outposts = {}
+
+    for _, unit in pairs(GetUnitList(UNIT_LIST_ALL)) do
+        local name = unit:GetUnitName()
+        if name == 'npc_dota_unit_twin_gate' then
+            table.insert(TwinGates, unit)
+        elseif name == '#DOTA_OutpostName_North' or name == '#DOTA_OutpostName_South' then
+            table.insert(Outposts, unit)
+        elseif name == 'npc_dota_watch_tower' or name == 'npc_dota_watcher' then
+            table.insert(Watchers, unit)
+        end
+    end
+
+    objectiveRefreshTime = DotaTime()
+end
+
+local function TryPickupLotusNearby()
+    local droppedList = GetDroppedItemList()
+    if droppedList == nil then return false end
+
+    local pickupRange = IsHighImmortal10kProfile() and 1100 or 800
+    for _, dropped in pairs(droppedList) do
+        if dropped and dropped.item and dropped.location then
+            local itemName = dropped.item:GetName()
+            if itemName == 'item_lotus' or itemName == 'item_greater_lotus' then
+                local dist = GetUnitToLocationDistance(bot, dropped.location)
+                if dist <= pickupRange and #J.GetEnemiesNearLoc(dropped.location, 1200) == 0 then
+                    bot:Action_PickUpItem(dropped.item)
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+local function TryCaptureNearbyObjective(objectives, radius)
+    if objectives == nil or #objectives == 0 then return false end
+
+    local safetyRadius = IsHighImmortal10kProfile() and 1100 or 900
+
+    for _, objective in pairs(objectives) do
+        if objective and not objective:IsNull() and objective:GetTeam() ~= GetTeam() then
+            local dist = GetUnitToUnitDistance(bot, objective)
+            if dist <= radius and #J.GetEnemiesNearLoc(objective:GetLocation(), safetyRadius) == 0 then
+                if dist > 280 then
+                    bot:Action_MoveToLocation(objective:GetLocation())
+                else
+                    if hCapture ~= nil and hCapture:IsFullyCastable() then
+                        bot:Action_UseAbilityOnEntity(hCapture, objective)
+                    else
+                        bot:Action_AttackUnit(objective, false)
+                    end
+                end
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function TryLotusPoolPathingForCore()
+    if not J.IsCore(bot) then return false end
+    if DotaTime() < 2 * 60 then return false end
+    if bot:WasRecentlyDamagedByAnyHero(2.0) then return false end
+
+    local cycle = math.floor(DotaTime()) % 180
+    if cycle > 18 then return false end
+
+    local lotusLoc = bot:GetTeam() == TEAM_RADIANT and radiantLotusPool or direLotusPool
+    if GetUnitToLocationDistance(bot, lotusLoc) <= 1800 and #J.GetEnemiesNearLoc(lotusLoc, 1400) == 0 then
+        bot:Action_MoveToLocation(lotusLoc)
+        return true
+    end
+
+    return false
+end
+
+local function TryUseTwinGateForFarmRotation(targetLoc)
+    if targetLoc == nil or #TwinGates < 2 then return false end
+    if GetUnitToLocationDistance(bot, targetLoc) < 5000 then return false end
+    if bot:WasRecentlyDamagedByAnyHero(2.0) then return false end
+
+    local nearestGate = nil
+    local nearestDist = 100000
+    local oppositeGate = nil
+
+    for _, gate in pairs(TwinGates) do
+        if gate and not gate:IsNull() then
+            local dBot = GetUnitToUnitDistance(bot, gate)
+            if dBot < nearestDist then
+                nearestDist = dBot
+                nearestGate = gate
+            end
+        end
+    end
+
+    if nearestGate == nil or nearestDist > 1700 then return false end
+
+    for _, gate in pairs(TwinGates) do
+        if gate ~= nearestGate then
+            oppositeGate = gate
+            break
+        end
+    end
+
+    if oppositeGate == nil then return false end
+
+    local nowDist = GetUnitToLocationDistance(bot, targetLoc)
+    local gateDist = GetUnitToLocationDistance(oppositeGate, targetLoc)
+    if gateDist >= nowDist - 2200 then return false end
+
+    if #J.GetEnemiesNearLoc(nearestGate:GetLocation(), 1200) > 0 then return false end
+
+    if nearestDist > 300 then
+        bot:Action_MoveToLocation(nearestGate:GetLocation())
+        return true
+    end
+
+    local gateWarp = bot:GetAbilityByName('twin_gate_portal_warp')
+    if gateWarp ~= nil and gateWarp:IsFullyCastable() then
+        bot:Action_UseAbilityOnEntity(gateWarp, nearestGate)
+        return true
+    end
+
+    bot:Action_AttackUnit(nearestGate, false)
+    return true
+end
+
+local function TryUtilityObjectivesDuringFarm(targetFarmLoc)
+    RefreshObjectiveEntities()
+
+    if TryPickupLotusNearby() then return true end
+
+    if TryCaptureNearbyObjective(Watchers, 900) then return true end
+    if TryCaptureNearbyObjective(Outposts, 1000) then return true end
+
+    if TryLotusPoolPathingForCore() then return true end
+
+    if TryUseTwinGateForFarmRotation(targetFarmLoc) then return true end
+
+    return false
+end
+
 function Think()
 	if J.CanNotUseAction(bot) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end
@@ -531,6 +709,7 @@ function Think()
 	if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp);end
 	if preferedCamp ~= nil then
 		local targetFarmLoc = preferedCamp.cattr.location;
+		if TryUtilityObjectivesDuringFarm(targetFarmLoc) then return end
 		local cDist = GetUnitToLocationDistance(bot, targetFarmLoc);
 		local nNeutrals = bot:GetNearbyCreeps(900, true);
 		if #nNeutrals >= 3 and cDist <= 600 and cDist > 240

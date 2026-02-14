@@ -107,6 +107,8 @@ Customize.Force_Group_Push_Level = 1
 -- Advanced AI profile mapping used by bots/FunLib/advanced_bot_ai.lua.
 -- Skill_Bracket: 'bot_immortal_6k' (default) or 'fretbots_10k'.
 -- Reflex_Profile: 'human', 'pro', 'superhuman'. Leave empty to auto follow skill bracket.
+-- If Skill_Bracket is empty, bracket can be auto-mapped from Fretbots difficulty:
+--   0-2 => legend, 3-7 => bot_immortal_6k, 8-10 => fretbots_10k
 Customize.AdvancedAI = {
     Skill_Bracket = 'bot_immortal_6k',
     Reflex_Profile = '',

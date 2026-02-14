@@ -1,5 +1,6 @@
 local X = {}
 local J = require(GetScriptDirectory()..'/FunLib/jmz_func')
+local AdvancedBotAI = require(GetScriptDirectory()..'/FunLib/advanced_bot_ai')
 local Customize = require(GetScriptDirectory()..'/Customize/general')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 local bot = GetBot()
@@ -29,6 +30,72 @@ local wisdomRuneSpots = {
 }
 local wisdomRuneInfo = {0, 0, false} -- time, loc, did
 local timeInMin = 0
+
+local WISDOM_INTERVAL = 7 * 60
+local WISDOM_PREP_WINDOW = 40
+local WISDOM_POST_WINDOW = 80
+
+local function GetWisdomMinuteMark()
+    local gameMinutes = math.floor(DotaTime() / 60)
+    if gameMinutes < 7 then return 0 end
+
+    local secInMinute = math.floor(DotaTime() % 60)
+    local nextMark = gameMinutes + (7 - (gameMinutes % 7))
+    if gameMinutes % 7 == 6 and (60 - secInMinute) <= WISDOM_PREP_WINDOW then
+        return nextMark
+    end
+
+    return gameMinutes - (gameMinutes % 7)
+end
+
+local function IsWisdomWindowOpen()
+    if DotaTime() < WISDOM_INTERVAL then return false end
+
+    local passedSinceCycle = DotaTime() % WISDOM_INTERVAL
+    local untilNextCycle = WISDOM_INTERVAL - passedSinceCycle
+
+    return passedSinceCycle <= WISDOM_POST_WINDOW or untilNextCycle <= WISDOM_PREP_WINDOW
+end
+
+local function IsPowerRune(runeId)
+	return runeId == RUNE_POWERUP_1 or runeId == RUNE_POWERUP_2
+end
+
+local function IsMidPowerSpikeReady()
+	if J.GetPosition(bot) ~= 2 then return false end
+	if bot:GetLevel() < 6 then return false end
+	if J.GetHP(bot) < 0.6 or J.GetMP(bot) < 0.45 then return false end
+
+	local heroName = bot:GetUnitName()
+	if heroName == 'npc_dota_hero_storm_spirit' then
+		local ult = bot:GetAbilityByName('storm_spirit_ball_lightning')
+		return ult ~= nil and ult:IsTrained() and bot:GetMana() >= 250
+	end
+
+	if AdvancedBotAI.GetSkillBracket ~= nil and AdvancedBotAI.GetSkillBracket() == 'fretbots_10k' then
+		return J.GetHP(bot) >= 0.52 and J.GetMP(bot) >= 0.40
+	end
+
+	return true
+end
+
+local function ShouldSupportSecureRuneForMid(targetRune)
+	local role = J.GetPosition(bot)
+	if role < 4 then return false end
+	if not IsPowerRune(targetRune) then return false end
+	if DotaTime() > 16 * 60 then return false end
+
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local ally = GetTeamMember(i)
+		if ally ~= nil and ally:IsAlive() and ally ~= bot and J.GetPosition(ally) == 2 then
+			if ally:GetLevel() >= 6 and GetUnitToLocationDistance(ally, GetRuneSpawnLocation(targetRune)) <= 2200 then
+				return true
+			end
+		end
+	end
+
+	return false
+end
 
 function GetDesire()
 	local cacheKey = 'GetRuneDesire'..tostring(bot:GetPlayerID())
@@ -74,7 +141,7 @@ function GetDesireHelper()
 	if bot:GetLevel() < 30 then
 		timeInMin = X.GetMulTime()
 		X.UpdateWisdom()
-		if DotaTime() >= 7 * 60
+		if IsWisdomWindowOpen()
 		and not J.IsMeepoClone(bot)
 		and not bot:HasModifier('modifier_arc_warden_tempest_double') then
 			if DotaTime() < wisdomRuneInfo[1] + 3.5 then
@@ -106,7 +173,7 @@ function GetDesireHelper()
 			and bot == X.GetWisdomAlly(wisdomRuneSpots[runeSpot]) then
 				wisdomRuneInfo[2] = runeSpot
 				wisdomRuneInfo[3] = true
-				return X.GetWisdomDesire(wisdomRuneSpots[runeSpot])
+				return math.max(X.GetWisdomDesire(wisdomRuneSpots[runeSpot]), BOT_MODE_DESIRE_VERYHIGH)
 			end
 		end
 	else
@@ -123,6 +190,18 @@ function GetDesireHelper()
     second = DotaTime() % 60
 
 	ClosestRune, ClosestDistance = X.GetBotClosestRune()
+
+	if ClosestRune ~= -1 and IsPowerRune(ClosestRune) then
+		if IsMidPowerSpikeReady() then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_VERYHIGH, ClosestDistance, 3600)
+		end
+
+		if ShouldSupportSecureRuneForMid(ClosestRune)
+		and not bot:WasRecentlyDamagedByAnyHero(2.0)
+		then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, ClosestDistance, 3000)
+		end
+	end
 
 	if ClosestRune ~= -1 and ClosestDistance < 1600 then
 		local nInRangeAlly = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
@@ -679,13 +758,8 @@ function X.UpdateWisdom()
 	end
 end
 
-local lastMin = 0
 function X.GetMulTime()
-	local currTime = math.floor(DotaTime() / 60)
-	if currTime > lastMin and currTime % 7 == 0 then
-		lastMin = currTime
-	end
-	return lastMin
+	return GetWisdomMinuteMark()
 end
 
 function X.GetWisdomAlly(vLoc)
@@ -695,9 +769,19 @@ function X.GetWisdomAlly(vLoc)
 		local member = GetTeamMember(i)
 		if member ~= nil and member:IsAlive() and not J.IsDoingTormentor(member) then
 			local dist = GetUnitToLocationDistance(member, vLoc)
-			if dist < score then
+			local role = J.GetPosition(member)
+			local roleBias = 1.0
+			if role >= 4 then
+				roleBias = 0.8
+			elseif role <= 2 then
+				roleBias = 1.25
+			end
+
+			local levelBias = 1 + math.max(0, member:GetLevel() - 12) * 0.03
+			local finalScore = dist * roleBias * levelBias
+			if finalScore < score then
 				target = member
-				score = dist
+				score = finalScore
 			end
 		end
 	end

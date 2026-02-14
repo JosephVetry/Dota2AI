@@ -303,6 +303,18 @@ function AdvancedBotAI.EnableDefaultBotMode()
     return AdvancedBotAI.SetSkillBracket("bot_immortal_6k")
 end
 
+function AdvancedBotAI.ResolveSkillBracketFromDifficulty(difficulty)
+    local d = tonumber(difficulty) or 0
+
+    if d >= 8 then
+        return "fretbots_10k"
+    elseif d >= 3 then
+        return "bot_immortal_6k"
+    end
+
+    return "legend"
+end
+
 function AdvancedBotAI.SetRole(roleName)
     local key = normalizeKey(roleName)
     local aliasMap = {

@@ -175,8 +175,8 @@ local function ResolveAdvancedAISkillBracket()
 		and tonumber(Customize.Fretbots.Default_Difficulty)
 		or 0
 
-	if fretDifficulty >= 5 then
-		return 'fretbots_10k'
+	if AdvancedBotAI.ResolveSkillBracketFromDifficulty ~= nil then
+		return AdvancedBotAI.ResolveSkillBracketFromDifficulty(fretDifficulty)
 	end
 
 	return 'bot_immortal_6k'
