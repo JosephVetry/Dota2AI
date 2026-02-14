@@ -869,10 +869,75 @@ local function ItemUsageComplement()
 
 end
 
+local EfficientConsumableItems = {
+	item_bottle = true,
+	item_magic_stick = true,
+	item_magic_wand = true,
+}
+
+local function GetEffectivePTStat(pt)
+	local ptStat = pt:GetPowerTreadsStat()
+	if ptStat == ATTRIBUTE_INTELLECT then
+		return ATTRIBUTE_AGILITY
+	elseif ptStat == ATTRIBUTE_AGILITY then
+		return ATTRIBUTE_INTELLECT
+	end
+
+	return ptStat
+end
+
+local function QueueSwitchPTToDesired(pt, desiredStat)
+	if pt == nil or not pt:IsFullyCastable() then return end
+
+	local currentStat = GetEffectivePTStat(pt)
+	if currentStat == desiredStat then return end
+
+	if desiredStat == ATTRIBUTE_INTELLECT then
+		if currentStat == ATTRIBUTE_STRENGTH then
+			bot:ActionQueue_UseAbility(pt)
+		else
+			bot:ActionQueue_UseAbility(pt)
+			bot:ActionQueue_UseAbility(pt)
+		end
+	elseif desiredStat == ATTRIBUTE_STRENGTH then
+		if currentStat == ATTRIBUTE_INTELLECT then
+			bot:ActionQueue_UseAbility(pt)
+			bot:ActionQueue_UseAbility(pt)
+		else
+			bot:ActionQueue_UseAbility(pt)
+		end
+	end
+end
+
+local function QueueEfficiencyBeforeConsumable(itemName)
+	if not EfficientConsumableItems[itemName] then return end
+
+	local pt = J.IsItemAvailable('item_power_treads')
+	if pt == nil or not pt:IsFullyCastable() then return end
+
+	local underThreat = bot:WasRecentlyDamagedByAnyHero(1.2)
+		or bot:WasRecentlyDamagedByTower(1.2)
+		or #J.GetNearbyHeroes(bot, 900, true, BOT_MODE_NONE) >= 1
+
+	if underThreat then
+		QueueSwitchPTToDesired(pt, ATTRIBUTE_STRENGTH)
+	else
+		QueueSwitchPTToDesired(pt, ATTRIBUTE_INTELLECT)
+	end
+end
+
 function X.SetUseItem( hItem, hItemTarget, sCastType )
+
+	local sItemName = hItem and hItem:GetName() or ''
 
 	if sCastType == 'none'
 	then
+		if EfficientConsumableItems[sItemName] then
+			QueueEfficiencyBeforeConsumable(sItemName)
+			bot:ActionQueue_UseAbility(hItem)
+			return
+		end
+
 		bot:Action_UseAbility( hItem )
 		return
 	elseif sCastType == 'unit' and type(hItemTarget) == 'table'

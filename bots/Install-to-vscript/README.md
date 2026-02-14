@@ -24,3 +24,15 @@
 By doing this, any new updates to the script content will automatically available as your Local dev script. Alternatively, you can choose to create a symbolic link yourself, check out Appendix below.
 
 If you need more detailed guides. Check: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions
+
+
+## Private/local usage (without Workshop dependency)
+
+If you maintain your own modified copy of this bot script and do **not** want dependency on Workshop updates:
+
+1. Put your private bot source anywhere you want (for example a Git clone).
+2. Keep the `Install-to-vscript` folder inside that source.
+3. Run `quick-install-oha.bat` (Windows) or `quick-install-oha-mac.sh` (Mac) **from your private source copy**.
+4. The installer now links `vscripts/bots` to the script's parent folder (your private source), not a hardcoded Workshop ID path.
+
+This lets your Dota 2 local bots use your adjusted code only.
