@@ -455,6 +455,73 @@ function CDOTA_Bot_Script:GetMaxMana()
     return originalGetMaxMana(self)
 end
 
+local advancedAIOk, AdvancedBotAI = pcall(require, GetScriptDirectory()..'/FunLib/advanced_bot_ai')
+
+local function IsHighPrecision10kMode()
+	if not advancedAIOk or AdvancedBotAI == nil or AdvancedBotAI.GetSkillBracket == nil then
+		return false
+	end
+
+	return AdvancedBotAI.GetSkillBracket() == 'fretbots_10k'
+end
+
+local function GetNearestPassableLocation(origin, target)
+	if target == nil then return origin end
+	if IsLocationPassable(target) then return target end
+
+	local dir = target - origin
+	local dist = math.sqrt(dir.x * dir.x + dir.y * dir.y)
+	if dist < 0.01 then return origin end
+	dir = dir / dist
+
+	for step = 1, 8 do
+		local candidate = origin + dir * (80 * step)
+		if IsLocationPassable(candidate) then
+			return candidate
+		end
+	end
+
+	return origin
+end
+
+local original_Action_MoveToLocation = CDOTA_Bot_Script.Action_MoveToLocation
+function CDOTA_Bot_Script:Action_MoveToLocation(vLoc)
+	if self == nil or vLoc == nil then
+		return
+	end
+
+	if not self:IsHero() then
+		return original_Action_MoveToLocation(self, vLoc)
+	end
+
+	if not IsHighPrecision10kMode() then
+		return original_Action_MoveToLocation(self, vLoc)
+	end
+
+	local now = DotaTime()
+	local myLoc = self:GetLocation()
+	if myLoc == nil then
+		return original_Action_MoveToLocation(self, vLoc)
+	end
+
+	if GetUnitToLocationDistance(self, vLoc) <= 65 then
+		return
+	end
+
+	if self._lastPrecisionMoveOrderTime ~= nil
+	and self._lastPrecisionMoveTarget ~= nil
+	and now - self._lastPrecisionMoveOrderTime < 0.08
+	and GetUnitToLocationDistance(self, self._lastPrecisionMoveTarget) < 90
+	then
+		return
+	end
+
+	local finalLoc = GetNearestPassableLocation(myLoc, vLoc)
+	self._lastPrecisionMoveOrderTime = now
+	self._lastPrecisionMoveTarget = finalLoc
+	return original_Action_MoveToLocation(self, finalLoc)
+end
+
 local X = {
 	orig_GetTeamPlayers = orig_GetTeamPlayers,
 	GetTeamPlayers = GetTeamPlayers

@@ -36,6 +36,7 @@ local Dota2Teams = require( GetScriptDirectory()..'/FunLib/aba_team_names' )
 local CaptainMode = require( GetScriptDirectory()..'/FunLib/captain_mode' )
 local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
 local HeroPositionMap = require( GetScriptDirectory()..'/FunLib/aba_hero_pos_weights' )
+local AdvancedBotAI = require( GetScriptDirectory()..'/FunLib/advanced_bot_ai' )
 local heroUnitNames = require( GetScriptDirectory()..'/FretBots/HeroNames')
 local Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 HeroPositionMap = HeroPositionMap.GetHeroPositions()
@@ -143,6 +144,96 @@ if Customize and not Customize.Enable then Customize = nil end
 
 -- Per-team string name for Role.RoleAssignment keying
 local sTeamName = GetTeam() == TEAM_RADIANT and 'TEAM_RADIANT' or 'TEAM_DIRE'
+
+local SlotRoleMap = {
+	[1] = 'carry',
+	[2] = 'mid',
+	[3] = 'offlane',
+	[4] = 'soft_support',
+	[5] = 'hard_support',
+}
+
+local function ToShortHeroName(heroName)
+	if type(heroName) ~= 'string' then return '' end
+	return heroName:gsub('^npc_dota_hero_', '')
+end
+
+local function ToInternalHeroName(heroName)
+	if type(heroName) ~= 'string' then return nil end
+	if heroName:find('^npc_dota_hero_') then return heroName end
+	return 'npc_dota_hero_' .. heroName
+end
+
+local function ResolveAdvancedAISkillBracket()
+	local adv = Customize and Customize.AdvancedAI or nil
+	if adv and type(adv.Skill_Bracket) == 'string' and adv.Skill_Bracket ~= '' then
+		return adv.Skill_Bracket
+	end
+
+	local fretDifficulty = Customize
+		and Customize.Fretbots
+		and tonumber(Customize.Fretbots.Default_Difficulty)
+		or 0
+
+	if fretDifficulty >= 5 then
+		return 'fretbots_10k'
+	end
+
+	return 'bot_immortal_6k'
+end
+
+local function ConfigureAdvancedAIForSlot(slot)
+	local roleName = SlotRoleMap[slot] or 'carry'
+	local skillBracket = ResolveAdvancedAISkillBracket()
+	local adv = Customize and Customize.AdvancedAI or nil
+
+	AdvancedBotAI.SetSkillBracket(skillBracket)
+	AdvancedBotAI.SetRole(roleName)
+
+	if adv and type(adv.Reflex_Profile) == 'string' and adv.Reflex_Profile ~= '' then
+		AdvancedBotAI.SetReflexProfile(adv.Reflex_Profile)
+	end
+
+	return roleName
+end
+
+local function GetPickedHeroes()
+	local picked = {}
+	for _, team in ipairs({ TEAM_RADIANT, TEAM_DIRE }) do
+		for _, playerId in pairs(GetTeamPlayers(team)) do
+			local selected = GetSelectedHeroName(playerId)
+			if selected ~= nil and selected ~= '' then
+				table.insert(picked, ToShortHeroName(selected))
+			end
+		end
+	end
+	return picked
+end
+
+local function GetAdvancedRecommendedHero(slot, rolePool)
+	local roleName = ConfigureAdvancedAIForSlot(slot)
+	local rolePoolSet = {}
+	for _, hero in ipairs(rolePool or {}) do
+		rolePoolSet[hero] = true
+	end
+
+	local recommendation = AdvancedBotAI.RecommendHeroPick({
+		role = roleName,
+		bannedHeroes = sBanList,
+		pickedHeroes = GetPickedHeroes(),
+	})
+
+	local best = recommendation and recommendation.best or nil
+	if best == nil then return nil end
+
+	local internalName = ToInternalHeroName(best.hero)
+	if internalName == nil then return nil end
+	if rolePoolSet[internalName] then
+		return internalName
+	end
+
+	return nil
+end
 
 --==============================================================================
 -- Role-pool construction helpers
@@ -634,9 +725,10 @@ local function PickHeroForBotSlot(i, id)
 	local team = TeamOfPlayer(id)
 	local rolePool = tSelectPoolList[i]
 	local preselect = sSelectList[i]
+	local advancedPick = GetAdvancedRecommendedHero(i, rolePool)
 
 	-- Default to preselect for variety path; can be overridden below
-	local pick = preselect
+	local pick = advancedPick or preselect
 
 	-- Use matchup data most of the time unless user forced picks
 	if not X.IsInCustomizedPicks(preselect) and RandomInt(1, 5) >= 1 then
@@ -651,6 +743,11 @@ local function PickHeroForBotSlot(i, id)
 
 		pick = SelectTopWithFuzz(scored)
 
+		-- Integrate advanced profile recommendation as a strong tie-breaker if valid
+		if advancedPick ~= nil and X.CanPickHero(team, advancedPick) and RandomInt(1, 100) <= 40 then
+			pick = advancedPick
+		end
+
 		-- Fallback: if none are pickable (due to bans/repeats/weakcap), random available
 		if not pick then
 			pick = X.GetRandomAvailableHero(team, rolePool) or preselect
@@ -659,7 +756,7 @@ local function PickHeroForBotSlot(i, id)
 
 	-- Final safety: ensure policy still holds (e.g., late ban added)
 	if not X.CanPickHero(team, pick) then
-		pick = X.GetRandomAvailableHero(team, rolePool) or preselect
+		pick = X.GetRandomAvailableHero(team, rolePool) or advancedPick or preselect
 	end
 
 	-- Update per-team weak count if needed
