@@ -172,5 +172,15 @@ Built on top of Valve’s default bots + contributions from many talented author
 * BOT Experiment (Furiospuppy)
 * ExtremePush ([insraq](https://github.com/insraq/dota2bots))
 * And all other contributors who made bot games better.
+
+## Advanced AI Integration (New)
+
+Advanced AI module now integrated into the drafting pipeline (role + bracket aware):
+- Runtime module: `bots/FunLib/advanced_bot_ai.lua`
+- Draft integration: `bots/hero_selection.lua`
+- User config: `bots/Customize/general.lua` (`Customize.AdvancedAI`)
+
+Panduan lengkap (Bahasa Indonesia):
+- [docs/advanced-ai-id.md](docs/advanced-ai-id.md)
 #   D o t a 2 A I  
  # Dota2AI
