@@ -1,4 +1,5 @@
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
+local AdvancedBotAI = require(GetScriptDirectory()..'/FunLib/advanced_bot_ai')
 local Customize = require( GetScriptDirectory()..'/Customize/general' )
 
 local bot = GetBot()
@@ -1035,6 +1036,10 @@ function CheckLaneToGank(botPosition)
 				local laneFrontToT1Dist = GetUnitToLocationDistance(tTower, laneFront)
 				local nInRangeAlly = J.GetAlliesNearLoc(laneFront, 1200)
 
+				local alliedControl = X.EstimateAlliedControlNearLane(lane[1])
+				local alliedHealing = X.EstimateAlliedHealingNearLane(lane[1])
+				local powerSpikeBonus = X.GetPowerSpikeRoamBonus()
+
 				if enableGateUsage
 				and laneFrontToT1Dist < 2000
 				then
@@ -1042,13 +1047,15 @@ function CheckLaneToGank(botPosition)
 					if enemyCountInLane >= #nInRangeAlly
 					then
 						laneToGank = lane[1]
-						return RemapValClamped(GetUnitToUnitDistance(bot, targetGate), 5000, 600, BOT_ACTION_DESIRE_HIGH, BOT_ACTION_DESIRE_ABSOLUTE )
+						local gateBase = RemapValClamped(GetUnitToUnitDistance(bot, targetGate), 5000, 600, BOT_ACTION_DESIRE_HIGH, BOT_ACTION_DESIRE_ABSOLUTE)
+						return math.min(BOT_ACTION_DESIRE_ABSOLUTE, gateBase + alliedControl * 0.05 + alliedHealing * 0.03 + powerSpikeBonus)
 					end
 				end
 
 				if enemyCountInLane >= 1 then
 					laneToGank = lane[1]
-					return RemapValClamped(laneFrontToT1Dist, 5000, 600, BOT_ACTION_DESIRE_HIGH, BOT_ACTION_DESIRE_ABSOLUTE * 0.96 )
+					local baseDesire = RemapValClamped(laneFrontToT1Dist, 5000, 600, BOT_ACTION_DESIRE_HIGH, BOT_ACTION_DESIRE_ABSOLUTE * 0.96)
+					return math.min(BOT_ACTION_DESIRE_ABSOLUTE, baseDesire + alliedControl * 0.06 + alliedHealing * 0.03 + powerSpikeBonus)
 				end
 			end
 
@@ -1056,6 +1063,67 @@ function CheckLaneToGank(botPosition)
 	end
 
 	return BOT_MODE_DESIRE_NONE
+end
+
+function X.EstimateAlliedControlNearLane(lane)
+	local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+	local allies = J.GetAlliesNearLoc(laneFront, 1600)
+	local control = 0
+
+	for _, ally in pairs(allies) do
+		if J.IsValidHero(ally) then
+			for slot = 0, 5 do
+				local ability = ally:GetAbilityInSlot(slot)
+				if ability ~= nil and ability:IsFullyCastable() and ability:IsTrained() then
+					local name = ability:GetName()
+					if string.find(name, 'stun') or string.find(name, 'hex') or string.find(name, 'root')
+					or string.find(name, 'fear') or string.find(name, 'sleep') or string.find(name, 'silence') then
+						control = control + 1
+					end
+				end
+			end
+		end
+	end
+
+	return math.min(control, 6)
+end
+
+function X.EstimateAlliedHealingNearLane(lane)
+	local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+	local allies = J.GetAlliesNearLoc(laneFront, 1600)
+	local healing = 0
+
+	for _, ally in pairs(allies) do
+		if J.IsValidHero(ally) then
+			local heroName = ally:GetUnitName()
+			if heroName == 'npc_dota_hero_dazzle'
+			or heroName == 'npc_dota_hero_oracle'
+			or heroName == 'npc_dota_hero_omniknight'
+			or heroName == 'npc_dota_hero_warlock'
+			or heroName == 'npc_dota_hero_abaddon'
+			or heroName == 'npc_dota_hero_treant'
+			then
+				healing = healing + 1
+			end
+		end
+	end
+
+	return math.min(healing, 3)
+end
+
+function X.GetPowerSpikeRoamBonus()
+	if J.GetPosition(bot) == 2 and bot:GetLevel() >= 6 and J.GetHP(bot) > 0.65 and J.GetMP(bot) > 0.5 then
+		return 0.08
+	end
+
+	if J.GetPosition(bot) >= 4 and bot:GetLevel() >= 4 and J.GetHP(bot) > 0.6 and J.GetMP(bot) > 0.45 then
+		if AdvancedBotAI.GetSkillBracket ~= nil and AdvancedBotAI.GetSkillBracket() == 'fretbots_10k' then
+			return 0.06
+		end
+		return 0.03
+	end
+
+	return 0
 end
 
 function HasSufficientMana(nMana)

@@ -11,6 +11,7 @@ local nEnemyCreeps = nil
 local nFurthestEnemyAttackRange = 0
 local nInRangeEnemy = nil
 local botAssignedLane = nil
+local lastAggroPullTime = -90
 local botAttackRange = bot:GetAttackRange()
 local attackDamage = bot:GetAttackDamage()
 
@@ -157,6 +158,38 @@ function GetBestDenyCreep(hCreepList)
 end
 
 if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
+	local function TryLaneAggroControl()
+		if DotaTime() - lastAggroPullTime < 2.4 then return false end
+		if not J.IsInLaningPhase() then return false end
+		if #nEnemyCreeps < 2 then return false end
+		if #nAllyCreeps <= #nEnemyCreeps then return false end
+
+		local enemies = J.GetNearbyHeroes(bot, 900, true, BOT_MODE_NONE)
+		for _, enemy in pairs(enemies) do
+			if J.IsValidHero(enemy) and not J.IsSuspiciousIllusion(enemy) and J.IsInRange(bot, enemy, 650) then
+				lastAggroPullTime = DotaTime()
+				bot:Action_AttackUnit(enemy, true)
+				bot:ActionQueue_MoveToLocation(GetLaneFrontLocation(GetTeam(), botAssignedLane, -260) + RandomVector(40))
+				return true
+			end
+		end
+
+		return false
+	end
+
+	local function TryLaneEquilibriumHold()
+		if not J.IsInLaningPhase() then return false end
+		if #nEnemyCreeps == 0 or #nAllyCreeps == 0 then return false end
+
+		local laneFrontTeam = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
+		local laneFrontEnemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
+		if laneFrontTeam >= laneFrontEnemy then return false end
+
+		local holdLoc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -botAttackRange - 120)
+		bot:Action_MoveToLocation(holdLoc + RandomVector(30))
+		return true
+	end
+
 	function Think()
 		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
 		if J.IsValid(hitCreep) then
@@ -178,6 +211,14 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) t
 		if J.IsValid(denyCreep) then
 			bot:SetTarget(denyCreep)
 			bot:Action_AttackUnit(denyCreep, true)
+			return
+		end
+
+		if TryLaneAggroControl() then
+			return
+		end
+
+		if TryLaneEquilibriumHold() then
 			return
 		end
 
