@@ -10,7 +10,7 @@ fi
 # Define paths
 steam_path="$HOME/Library/Application Support/Steam"
 dota_path="$steam_path/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots"
-workshop_path="$steam_path/steamapps/workshop/content/570/3246316298"
+source_path=$(cd "$(dirname "$0")/.." && pwd)
 install_folder=$(cd "$(dirname "$0")" && pwd)
 
 # Check if Steam and Dota paths exist
@@ -19,8 +19,8 @@ if [ ! -d "$steam_path" ]; then
   exit 1
 fi
 
-if [ ! -d "$workshop_path" ]; then
-  echo "Workshop folder not found at $workshop_path. Please check your workshop item ID and try again."
+if [ ! -d "$source_path" ]; then
+  echo "Source folder not found at $source_path. Please run this script from a valid bot script copy."
   exit 1
 fi
 
@@ -34,8 +34,9 @@ if [ -d "$dota_path" ]; then
 fi
 
 # Create symbolic link
+echo "Using source path: $source_path"
 echo "Creating symbolic link..."
-ln -s "$workshop_path" "$dota_path"
+ln -s "$source_path" "$dota_path"
 if [ $? -eq 0 ]; then
   echo "============"
   echo "Install Succeeded!!!"
